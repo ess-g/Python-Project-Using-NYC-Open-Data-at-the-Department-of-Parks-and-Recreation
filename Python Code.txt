@@ -1,0 +1,842 @@
+IMPORTS¶
+import numpy as np
+import pandas as pd
+from sodapy import Socrata
+import requests
+import seaborn as sns
+import matplotlib.pyplot as plt
+import datetime as dt
+import plotly.express as px
+from PIL import Image
+animals_df = pd.read_csv("Urban_Park_Ranger_Animal_Condition_Response.csv")
+NYC OPEN DATA: "Urban Park Ranger Animal Condition Response"
+This dataset contains information about requests for animal assistance, relocation, and/or rescue completed by the Urban Park Rangers in New York City.
+DATASET ANALYSIS
+animals_df.dtypes
+Date and Time of initial call        object
+Date and time of Ranger response     object
+Borough                              object
+Property                             object
+Location                             object
+Species Description                  object
+Call Source                          object
+Species Status                       object
+Animal Condition                     object
+Duration of Response                float64
+Age                                  object
+Animal Class                         object
+311SR Number                         object
+Final Ranger Action                  object
+# of Animals                        float64
+PEP Response                         object
+Animal Monitored                     object
+Rehabilitator                        object
+Hours spent monitoring              float64
+Police Response                      object
+ESU Response                           bool
+ACC Intake Number                    object
+dtype: object
+​
+animals_df.columns
+Index(['Date and Time of initial call', 'Date and time of Ranger response',
+       'Borough', 'Property', 'Location', 'Species Description', 'Call Source',
+       'Species Status', 'Animal Condition', 'Duration of Response', 'Age',
+       'Animal Class', '311SR Number', 'Final Ranger Action', '# of Animals',
+       'PEP Response', 'Animal Monitored', 'Rehabilitator',
+       'Hours spent monitoring', 'Police Response', 'ESU Response',
+       'ACC Intake Number'],
+      dtype='object')
+​
+animals_df.head(3)
+Date and Time of initial call	Date and time of Ranger response	Borough	Property	Location	Species Description	Call Source	Species Status	Animal Condition	Duration of Response	...	311SR Number	Final Ranger Action	# of Animals	PEP Response	Animal Monitored	Rehabilitator	Hours spent monitoring	Police Response	ESU Response	ACC Intake Number
+0	06/23/2021 04:45:00 PM	06/24/2021 08:00:00 AM	Brooklyn	Sternberg Park	Inside locked athletic field under construction	Chukar	Other	Exotic	Healthy	6.00	...	311-06712416	ACC	6.0	False	False	NaN	NaN	False	False	163537
+1	06/24/2021 10:00:00 AM	06/24/2021 11:00:00 AM	Bronx	Haffen Park	Haffen Pool	Sparrow	Central	Native	Healthy	1.75	...	311-06714879	Rehabilitator	4.0	False	False	NaN	NaN	False	False	NaN
+2	06/23/2021 02:30:00 PM	06/23/2021 02:30:00 PM	Bronx	Pelham Bay Park	Pelham Bay South	White-tailed Deer	Employee	Native	NaN	1.00	...	NaN	Unfounded	0.0	False	False	NaN	NaN	False	False	NaN
+3 rows × 22 columns
+
+DATA CLEANING
+Are there any duplicate records?
+duplicates = animals_df.duplicated().sum().sum()
+duplicates
+0
+Are there any Columns not pertaining to my analysis?
+animals_df.columns
+Index(['Date and Time of initial call', 'Date and time of Ranger response',
+       'Borough', 'Property', 'Location', 'Species Description', 'Call Source',
+       'Species Status', 'Animal Condition', 'Duration of Response', 'Age',
+       'Animal Class', '311SR Number', 'Final Ranger Action', '# of Animals',
+       'PEP Response', 'Animal Monitored', 'Rehabilitator',
+       'Hours spent monitoring', 'Police Response', 'ESU Response',
+       'ACC Intake Number'],
+      dtype='object')
+#22 Columns
+animals_df = animals_df.drop(['Date and Time of initial call','ESU Response','ACC Intake Number','Location','Call Source','Duration of Response','Rehabilitator','311SR Number','PEP Response', 'Police Response','Animal Monitored','Hours spent monitoring'], axis=1)
+animals_df.columns
+Index(['Date and time of Ranger response', 'Borough', 'Property',
+       'Species Description', 'Species Status', 'Animal Condition', 'Age',
+       'Animal Class', 'Final Ranger Action', '# of Animals'],
+      dtype='object')
+#10 Columns
+animals_df.head(5)
+Date and time of Ranger response	Borough	Property	Species Description	Species Status	Animal Condition	Age	Animal Class	Final Ranger Action	# of Animals
+0	06/24/2021 08:00:00 AM	Brooklyn	Sternberg Park	Chukar	Exotic	Healthy	Adult	Birds	ACC	6.0
+1	06/24/2021 11:00:00 AM	Bronx	Haffen Park	Sparrow	Native	Healthy	Infant	Birds	Rehabilitator	4.0
+2	06/23/2021 02:30:00 PM	Bronx	Pelham Bay Park	White-tailed Deer	Native	NaN	Juvenile	Deer	Unfounded	0.0
+3	06/23/2021 01:10:00 PM	Staten Island	Willowbrook Park	Raccoon	Native	NaN	Adult;#Juvenile	Small Mammals-RVS	Unfounded	0.0
+4	06/23/2021 09:20:00 AM	Queens	Judge Moses Weinstein Playground	Virginia Opossum	Native	Healthy	Juvenile	Small Mammals-non RVS	ACC	1.0
+Are there any NULL values?
+animals_df.isnull().sum().sum()
+411
+​
+animals_df.isnull().sum()
+Date and time of Ranger response      0
+Borough                               0
+Property                              1
+Species Description                   0
+Species Status                       16
+Animal Condition                    390
+Age                                   0
+Animal Class                          0
+Final Ranger Action                   0
+# of Animals                          4
+dtype: int64
+​
+animals_df = animals_df.fillna('Not Reported')
+animals_df.isnull().sum()
+Date and time of Ranger response    0
+Borough                             0
+Property                            0
+Species Description                 0
+Species Status                      0
+Animal Condition                    0
+Age                                 0
+Animal Class                        0
+Final Ranger Action                 0
+# of Animals                        0
+dtype: int64
+​
+Are there any mispelled words?
+animals_df.columns
+Index(['Date and time of Ranger response', 'Borough', 'Property',
+       'Species Description', 'Species Status', 'Animal Condition', 'Age',
+       'Animal Class', 'Final Ranger Action', '# of Animals'],
+      dtype='object')
+animals_df["Borough"].unique()
+array(['Brooklyn', 'Bronx', 'Staten Island', 'Queens', 'Manhattan'],
+      dtype=object)
+animals_df["Property"].unique()
+array(['Sternberg Park', 'Haffen Park', 'Pelham Bay Park',
+       'Willowbrook Park', 'Judge Moses Weinstein Playground',
+       'Clove Lakes Park', 'Travers Park', 'Prospect Park',
+       'Highbridge Park', 'Forest Park', 'Inwood Hill Park',
+       'Marine Park', 'Queens Botanical Garden',
+       'Franklin D. Roosevelt Boardwalk and Beach', 'Van Cortlandt Park',
+       'Central Park', "Udall's Park Preserve",
+       'Rockaway Beach and Boardwalk', 'Crotona Park',
+       'Flushing Meadows Corona Park', 'Riverside Park',
+       'William McCray Playground', 'Red Hook Recreation Area',
+       'Canarsie Park', 'Bensonhurst Park', 'Parade Ground',
+       'Alley Pond Park', 'Highland Park', 'Astoria Park',
+       'Lemon Creek Park', 'Bill Rainey Park', 'Mullaly Park',
+       'Flatbush and Tilden Avenues', 'High Rock Park',
+       '406 Woodward Avenue', 'West Harlem Piers', 'Leif Ericson Park',
+       'Fort Greene Park', 'Snug Harbor Cultural Center',
+       'Bailey Playground', 'Raoul Wallenberg Forest', 'Kissena Park',
+       'Cunningham Park', 'Juniper Valley Park', "Wolfe's Pond Park",
+       'Freshkills Park', 'Fort Totten Park', 'Ranaqua Park',
+       'Morningside Park', 'Bronx Park', 'Othmar Ammann Playground',
+       'Fort Tryon Park', 'Blue Heron Park', 'Madison Square Park',
+       'Purple Playground', 'Fort Independence Playground',
+       'Conference House Park', 'Coney Island Beach &amp; Boardwalk',
+       'Brooklyn Bridge Park', 'Goodhue Park', 'Oak Grove Park',
+       'Hudson River Park', 'Fort Washington Park',
+       'Socrates Sculpture Park', 'Bradys Pond Park', 'Baisley Pond Park',
+       'Barretto Point Park', 'St. James Recreation Center',
+       'Henry Chapin Playgorund', 'Playground Eighty Nine LXXXIX',
+       'Alley Pond Park Oakland Lake',
+       'Ocean Breeze Track & Field Athletic Complex', 'St. Nicholas Park',
+       'Andrew Haswell Green Park', 'Levy Park', 'Roebling Playground',
+       'Hallets Cove Park', 'Bloomingdale Park',
+       'Broad Channel American Park', 'Ewen Park', 'Westerleigh Park',
+       'Williamsbridge Oval', 'Bayswater Park', 'Carl Schurz Park',
+       'High Line Park', 'Sherman Creek', "Owl's Head Park",
+       'Cedar Grove Park', 'Macombs Dam Park', 'Mafera Park',
+       'Dyker Beach Park', 'Harvey Park', 'Great Kills Park',
+       'Belt Parkway/Shore Parkway', 'Jackie Robinson Recreation Center',
+       'Little Bay Park', 'Seguine Mansion- Historical Building',
+       'LaTourette Park & Golf Course', 'MacDonald Park',
+       'Brookfield Park', 'Joseph Rodman Drake Park',
+       'Washington Square Park', 'McCarren Park', 'Bush Terminal Park',
+       'Spring Creek Park', 'Silver Lake Park', 'Bowne Park',
+       'Hamilton Fish Park', 'Oakland Gardens', 'Hoffman Park',
+       'Greenbelt White trail', 'Joseph Manna Park',
+       'Phil "Scooter" Rizzuto Park', 'Crocheron Park',
+       'William T. Davis Wildlife Refuge', 'Midland Beach',
+       'Coney Island Beach and Boardwalk', 'St. Albans Park',
+       'Henry Hudson Park', "St. Michael's Playground", 'Motor Parkway',
+       'Shoelace Park', 'Martin Luther King Jr. Park', 'Palmer Inlet',
+       'Ferry Point Park', 'Sara D. Roosevelt Park', 'Tremont Park',
+       'Kolbert Playground', 'South Shore Country Club', 'Kaiser Park',
+       'The Big Park', 'Walt Whitman Park', 'King Fisher Park',
+       'Historic Richmondtown', 'Sunset Park', 'East River Esplanade',
+       'Union Square Park', 'Walton Park', 'Jackie Robinson Park',
+       'Fulton Park', 'Kingdom Pond Park', 'Seaside Wildlife Nature Park',
+       "Randall's Island Park", 'Soundview Park',
+       'Robert L. Clinkscales Playground and Community Garden',
+       'Bushwick Playground', 'Shore Park and Parkway',
+       'Bartlett Playground', 'Sheepshead Bay Piers', 'Queensbridge Park',
+       'Cadman Plaza Park', 'Grand Army Plaza',
+       'Greenstreet across 269 Cambridge Avenue', 'Not Reported',
+       'Midland Playground', 'Greenbelt Nature center',
+       'Park Avenue Malls', 'Mapes Pool', 'Magenta Playground',
+       'American Veterans Memorial Pier', 'Columbus Park', 'Brower Park',
+       "Reed's Basket Willow Swamp Park", 'John Paul Jones Park',
+       'Coney Island Creek Park', 'Barrier Playground',
+       'Msgr. McGolrick Park', 'Calvert Vaux Park', 'Green street',
+       'Owl Hollow Fields', 'Eibs Pond Park', 'Blake Hobbs Playground',
+       'Herbert Von King Park', 'Jones Woods Park', 'John Jay Park',
+       'Jacob Riis Beach', 'City Line Park', 'Bergen Beach Playground',
+       'Ocean Breeze Park', 'Peter Detmold Park', 'Hudson Park',
+       'Brighton Playground', 'Haggerty Park', 'Park of the Americas',
+       'Hinton Park', 'Theodore Roosevelt Park', 'Chelsea Park',
+       'Allison Pond Park', 'Evergreen Park', 'Olmsted-Beil House Park',
+       'Highbridge Recreation Center', 'Aesop Park', 'Cambria Playground',
+       'Prospect park', 'Queens Bridge Park',
+       'Southern Fields Athletic Fields', 'Laredo Avenue Parcel',
+       'Midland Field', 'South Oxford Park', 'Alley Athletic Playground',
+       'Harris Park', 'South Beach', 'Brooklyn Heights Promenade',
+       'Bridge and Tunnel Park', 'Roy Wilkins Recreation Center',
+       'Riverside Park South', 'Manhattan Beach Park',
+       'Stapleton Esplanade', 'Owls Head Park', 'Saratoga Park',
+       'Stroud Playground', 'Bowling Green',
+       'Police Officer Edward Byrne Park', 'Starlight Park',
+       'Marcus Garvey Park', 'Benjamin Gladstone Square',
+       'South Beach Wetlands', 'Colgate Close',
+       'Stanley Isaacs Playground', 'Asser Levy Park',
+       'P.O. Serrano Playground', 'Alice Austen Park',
+       'High Bridge Park Recreation Center Basement', "St. Mary's Park",
+       'Seton Park', 'Greenbelt Native Plant Center', 'Brookville Park',
+       'Tompkinsville Park', "Hunter's Point South Park",
+       "St. Catherine's Park", 'Idlewild Park', 'Bunker Ponds Park',
+       'Jerome Park Reservoir', 'Bella Abzug Park',
+       'Silverstein Family Park', 'Springfield Park', 'Rienzi Playground',
+       'Clearview Park Golf Course', 'Kissena Corridor Park',
+       'Prospect Park Lake', 'Stuyvesant Cove Park',
+       'Centreville Playground', 'Commodore Barry Park',
+       'Holy Cow Playground', 'Bryant Park', 'Stuyvesant Square',
+       'William T Davis Wildlife Refuge', 'Orchard Beach',
+       'Von Briesen Park', 'Bushwick Inlet Park', 'Collect Pond Park',
+       'Rainey Park', 'Clark Playground', 'Bellevue South Park',
+       'Aqueduct Walk', "Powell's Cove Park", 'East River Park',
+       'Oakland Lake', 'Coffey Park', 'Wild Bird Fund',
+       'Sorrentino Recreation Center', 'De Witt Clinton Park',
+       'Hudson Yards', 'Holocaust Memorial Park', 'Red Hook Park.',
+       'Greenbelt Nature Center', 'Fairview Park',
+       'Catharine Turner Richardson Park', 'Brook Park',
+       'Dubos Point Wildlife Sanctuary', 'Amundsen Circle',
+       'Shore Road Park', 'Columbus Circle', 'High Line',
+       'Green street at Intersection of 120th Street and Marsden Avenue',
+       'Chapin Woods', 'Francis Lewis Park', 'Hart Island',
+       'Mosholu Parkway', 'New Dorp Park', 'Richman (Echo) Park',
+       'Cedar Grove Beach', 'Captain Tilly Park', 'Long Island Mews',
+       'Southwest Playground', 'Fresh Creek Nature Preserve',
+       'Tottenville Pool', 'Payson Playground', 'Queens borough Hall',
+       'Bartow Pell Mansion', 'J. Hood Wright Park',
+       'Utopia Parkway and 77th Road', 'Isham Park', 'Vidalia Park',
+       'Bayview Playground',
+       'Outside of Prospect Park on private property',
+       'Albert J. Parham Playground', 'Street Tree in Sunnyside',
+       'Midland beach', 'Pier 11', 'Washingtom Square Park',
+       'Irving Square Park', 'Tompkins Square Park',
+       'Robert Bendheim Playground', '851 Fairmont Pl',
+       'Frederick Douglass Playground', 'Harding Park',
+       'Battery Park City', 'Highline Park', 'Bartel-Pritchard Square',
+       'Maria Hernandez Park', 'Williamsbridge Oval Recreation Center',
+       'Pugsley Creek Park', 'Rockaway Beach 48 Street', 'Centrail Park',
+       'Greenbelt Recreation Center', 'College Point Park',
+       'Schmul Park 40.589434, -74.187249',
+       'Hylan Boulevard and Ithaca Street', 'Macneil Park',
+       'Marco Giovanelli Playground', 'Green Street',
+       'Green-Wood Cemetery', 'Concrete Plant Park',
+       'Greeley Square Park', 'Historic Richmond Town',
+       'Ehrenreich-Austin Playground', 'Park Of The Americas',
+       'Historic Richmond town', 'Matthews Muliner Playground',
+       'Mannahatta Park', 'Industrial Park', 'Joe Michaels Mile',
+       'Ft Tryon Park', 'Flushing Fields', 'Queens Farm Park',
+       'Van Dyke Playground', 'Flushing Meadows Corona Park Boathouse',
+       'Blood Root Valley', 'Hamilton Fish Recreation Center',
+       'Thomas Jefferson Recreation Center',
+       'Frederick B. Judge Playground', 'Marcy Playground',
+       'Fort Hamilton Recreation Center', 'Jacob H. Schiff Playground',
+       'private property', 'Frank Golden Park', 'Taylor Playground',
+       'NYC Parking Garage', 'Hudson Yards entrance to Highline Park',
+       'Mercer Playground', 'Bushwick Inlet', 'Seton Falls Park',
+       'Seguine Mansion', '5 East 102nd St', 'Garden Playground',
+       'Riverdale Playground', 'Linnaeus Park', 'Decatur Playground',
+       'Playground Eighty LXXX', 'Lincoln Terrace Park', 'Annadale Green',
+       'Wegener Park', 'Dongan Playground', 'Sutton Place Park',
+       'Jacob Joffe Fields', 'Story Playground', 'Southern Stables',
+       'Bedford Playground', 'PS 153', 'Hester St. Playground',
+       'Merriam Playground', 'Playground 103 CIII', 'Churchill School',
+       'Altamont House', 'Colonel Charles Young Playground',
+       'Underhill Playground', 'Cenral Park', 'Washington Market Park',
+       'Central  Park', 'James Finley Walk', 'Mellet Playground',
+       'Alley Pond Park Tennis Courts Near Court 16',
+       'Sheltering Arms Playground', 'Space Time Playground',
+       'John V. Lindsay East River Park', 'Abingdon Square'], dtype=object)
+animals_df["Species Status"].unique()
+array(['Exotic', 'Native', 'Domestic', 'Invasive', 'Not Reported'],
+      dtype=object)
+animals_df["Final Ranger Action"].unique()
+array(['ACC', 'Rehabilitator', 'Unfounded',
+       'Relocated/Condition Corrected', 'Advised/Educated others',
+       'Monitored Animal', 'Submitted for DEC Testing'], dtype=object)
+animals_df = animals_df.replace("ACC", "Animal Care Center-ACC")
+animals_df["Final Ranger Action"].unique()
+array(['Animal Care Center-ACC', 'Rehabilitator', 'Unfounded',
+       'Relocated/Condition Corrected', 'Advised/Educated others',
+       'Monitored Animal', 'Submitted for DEC Testing'], dtype=object)
+animals_df = animals_df.replace("Birds;#Domestic", "Domestic")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-RVS', 'Small Mammals-non RVS',
+       'Domestic;#Birds', 'Domestic', 'Terrestrial Reptile or Amphibian',
+       'Raptors', 'Fish-numerous quantity', 'Marine Reptiles',
+       'Domestic;#Small Mammals-non RVS', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-numerous quantity;#Terrestrial Reptile or Amphibian',
+       'Small Mammals-RVS;#Domestic'], dtype=object)
+animals_df = animals_df.replace("Domestic;#Birds", "Domestic")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-RVS', 'Small Mammals-non RVS',
+       'Domestic', 'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-numerous quantity', 'Marine Reptiles',
+       'Domestic;#Small Mammals-non RVS', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-numerous quantity;#Terrestrial Reptile or Amphibian',
+       'Small Mammals-RVS;#Domestic'], dtype=object)
+animals_df = animals_df.replace("Domestic;#Small Mammals-non RVS", "Domestic")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-RVS', 'Small Mammals-non RVS',
+       'Domestic', 'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-numerous quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-numerous quantity;#Terrestrial Reptile or Amphibian',
+       'Small Mammals-RVS;#Domestic'], dtype=object)
+animals_df = animals_df.replace("Small Mammals-RVS;#Domestic", "Domestic")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-RVS', 'Small Mammals-non RVS',
+       'Domestic', 'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-numerous quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-numerous quantity;#Terrestrial Reptile or Amphibian'],
+      dtype=object)
+animals_df = animals_df.replace("Fish-numerous quantity;#Terrestrial Reptile or Amphibian", "Fish-Numerous Quantity")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-RVS', 'Small Mammals-non RVS',
+       'Domestic', 'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-numerous quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-Numerous Quantity'], dtype=object)
+animals_df = animals_df.replace("Small Mammals-non RVS", "Small Mammals-Non Rabies Vector Species")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-RVS',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-numerous quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-Numerous Quantity'], dtype=object)
+animals_df = animals_df.replace("Small Mammals-RVS", "Small Mammals-Rabies Vector Species")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-numerous quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)',
+       'Fish-Numerous Quantity'], dtype=object)
+animals_df = animals_df.replace("Fish-numerous quantity","Fish-Numerous Quantity")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors',
+       'Fish-Numerous Quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)'],
+      dtype=object)
+animals_df = animals_df.replace("Raptors","Raptors (Predatory Birds)")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors (Predatory Birds)',
+       'Fish-Numerous Quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals-whales, Dolphin', 'Marine Mammals-seals only',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)'],
+      dtype=object)
+animals_df = animals_df.replace("Marine Mammals-whales, Dolphin","Marine Mammals (Whales, Dolphins, Seals)")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors (Predatory Birds)',
+       'Fish-Numerous Quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals (Whales, Dolphins, Seals)',
+       'Marine Mammals-seals only', 'Rare, Endangered, Dangerous',
+       'Non Native Fish-(invasive)'], dtype=object)
+animals_df = animals_df.replace("Marine Mammals-seals only","Marine Mammals (Whales, Dolphins, Seals)")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors (Predatory Birds)',
+       'Fish-Numerous Quantity', 'Marine Reptiles', 'Coyotes',
+       'Marine Mammals (Whales, Dolphins, Seals)',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)'],
+      dtype=object)
+animals_df = animals_df.replace("Marine Reptiles","Marine Reptiles (Sea Turtles)")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors (Predatory Birds)',
+       'Fish-Numerous Quantity', 'Marine Reptiles (Sea Turtles)',
+       'Coyotes', 'Marine Mammals (Whales, Dolphins, Seals)',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)'],
+      dtype=object)
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors (Predatory Birds)',
+       'Fish-Numerous Quantity', 'Marine Reptiles (Sea Turtles)',
+       'Coyotes', 'Marine Mammals (Whales, Dolphins, Seals)',
+       'Rare, Endangered, Dangerous', 'Non Native Fish-(invasive)'],
+      dtype=object)
+animals_df = animals_df.replace("Non Native Fish-(invasive)","Fish-Numerous Quantity")
+animals_df["Animal Class"].unique()
+array(['Birds', 'Deer', 'Small Mammals-Rabies Vector Species',
+       'Small Mammals-Non Rabies Vector Species', 'Domestic',
+       'Terrestrial Reptile or Amphibian', 'Raptors (Predatory Birds)',
+       'Fish-Numerous Quantity', 'Marine Reptiles (Sea Turtles)',
+       'Coyotes', 'Marine Mammals (Whales, Dolphins, Seals)',
+       'Rare, Endangered, Dangerous'], dtype=object)
+animals_df = animals_df.replace("Sea turtle","Sea Turtle")
+animals_df["Species Description"].unique()
+array(['Chukar', 'Sparrow', 'White-tailed Deer', 'Raccoon',
+       'Virginia Opossum', 'Domestic Duck', 'Canada Goose', 'Cat', 'Dog',
+       'Eastern Rat Snake', 'Eastern Gray Squirrel', 'Domestic Rabbit',
+       'Northern Cardinal', 'Mallard Duck', 'Double-crested Cormorant',
+       'Common Snapping Turtle', 'Chicken',
+       'Argentine Black and White Tegu', 'American Kestrel',
+       'Red-tailed Hawk', 'Rock Dove', 'Catfish', 'Red-Eared Slider',
+       'Bat (Unknown)', 'Common Grackle', 'Herring Gull', 'Laughing Gull',
+       'Diamondback Terrapin', 'Red-eared Slider', 'Raptor (Unknown)',
+       'Blue Jay', 'Barn Swallow', 'Bird (Unknown)', 'Mute Swan',
+       'Wood Duck', 'Turtle (Unknown)', 'Spiny Softshell Turtle',
+       'Warbling Vireo', 'Snake (Unknown)', 'Brant Goose',
+       'House Sparrow', 'American Robin', 'Eastern Box Turtle',
+       'Bearded Dragon', 'Mouse (Unknown)', 'American Oystercatcher',
+       'Python (Unknown)', 'Painted Turtle', 'Corn Snake', 'Muskrat',
+       'Domestic Turkey', 'European Starling', 'Ovenbird',
+       'Duck (Unknown)', 'Budgerigar Parakeet', 'Ring-billed Gull',
+       'Domestic Goose', 'Rose-breasted Grosbeak',
+       'Great Black-backed Gull', 'Yellow-bellied Slider',
+       'Eastern Cottontail Rabbit', 'Eastern Coyote',
+       'Red-Bellied Woodpecker', 'Atlantic Menhaden', 'Striped Skunk',
+       'Red-throated Loon', 'Bottlenose Dolphin', 'Little Brown Bat',
+       'Garter Snake', 'Northern Flicker', 'White-throated Sparrow',
+       'Eastern Red Bat', 'Killdeer', 'Great Egret', 'Wild Turkey',
+       'Animal (Unknown)', 'Black Scoter', 'Scaup', 'Frog (Unknown)',
+       'Hamster', 'White-tailed deer', 'Rough-legged Hawk',
+       'Red-Shouldered Hawk', 'Snowy Owl', 'Harp Seal', 'Domestic Dove',
+       'Barred Owl', 'Groundhog', 'Carolina Wren', 'Ring-Billed Gull',
+       'Norway Rat', 'Black-capped Chickadee', 'Gull (Unknown)',
+       'Black-backed gull', "Cooper's Hawk", 'Wren (Unknown)',
+       'Great Blue Heron', 'Pig', 'Tufted Titmouse',
+       'Yellow-headed Blackbird', 'Gadwall', 'Double-crested cormorant',
+       'Northern Saw-whet Owl', 'Tern (Unknown)', 'Red Fox',
+       'Muscovy Duck', 'Pine Siskin', 'Double-Crested Cormorant',
+       'Peregrine Falcon', 'Shorebird (Unknown)', 'Wood Thrush',
+       'Cockatiel', 'Gray Catbird', 'Softshell Turtle', 'Guineafowl',
+       'Black-and-white Warbler', 'Red-eared slider', 'American Crow',
+       'American Bullfrog', 'Spiny Dogfish Shark',
+       'Loggerhead Sea Turtle', 'Osprey', 'Puma',
+       'Black-crowned Night Heron', 'Honey Bee', 'Cedar Waxwing',
+       'Atlantic Canary', 'Lovebird', 'Baltimore Oriole',
+       'Nothern Mockingbird', 'Monk Parakeet', 'Eastern Chipmunk',
+       'Hermit Thrush', 'Great Horned Owl', 'Black-backed Gull',
+       'Green Heron', 'Seal (Unknown)', 'Yellow-crowned Night Heron',
+       'Guinea Pig', 'Blue-Grey Gnatcatcher', 'Harbor Seal', 'Gray Seal',
+       'Northern Gannet', 'Golden-crowned Kinglet',
+       'Red-winged Blackbird', 'Mourning Dove', 'American Coot',
+       'American Woodcock', 'Loon (Unknown)', 'Common Merganser',
+       'Red-breasted Merganser', 'Koi', 'Snow Goose', 'Red-Throated Loon',
+       'Minke Whale', 'Bengalese Finch', 'Sea Turtle', 'Khaki Campbell',
+       'Fancy Mouse', 'Dolphin (Unknown)', 'American Alligator',
+       'Red Siskin x Canary hybrid', 'Woodpecker (Unknown)',
+       'Garter snake', 'Merlin', 'Domestic Waterfowl',
+       'Tortoise (Unknown)', 'Great Black-Backed Gull',
+       'Lesser Yellowlegs', 'Beaver', 'White-winged Scoter',
+       'Parrot (Unknown)', 'Black-billed cuckoo', 'Peafowl',
+       'Black Racer Snake', 'Red-eyed Vireo', 'American Goldfinch',
+       'Fish (Unknown)', 'Silver-haired Bat', 'Egret (Unknown)',
+       'Northern Saw-whet owl', 'Big Brown Bat', 'Harbor Porpoise',
+       'house sparrow', 'Sharp-shinned Hawk', 'Ruddy Duck',
+       'Yellow-bellied Sapsucker', 'Mandarin Duck', 'Nashville Warbler',
+       'Downy Woodpecker', 'Alligator Snapping Turtle', 'mallard duck',
+       'Canada goose', 'Red-Tailed Hawk', 'Black Skimmer', 'Hummingbird',
+       'Red-tailed hawk', 'Gerbil', 'raccoon', 'Green Iguana',
+       'Mallard duck', 'Herring gull'], dtype=object)
+DATA EXPLORATION THROUGH VISUALIZATION
+1. Types of Animal Classes in the 5 boroughs
+2. Types of Rare Animals in the 5 boroughs
+3. Park Ranger Responses to Animal Sighting Requests and the affect of the responses on these Animals
+4. Health Conditions of Rare Animals
+How many Animal Classes are in each borough?
+#Animal Class refers to the category or group of animal species!
+
+species_class_count = animals_df.groupby('Borough')['Animal Class'].count().reset_index()
+sorted_species_class_count = species_class_count.sort_values('Animal Class', ascending=False)
+fig, a = plt.subplots(figsize=(18,12))
+​
+sns.barplot(x='Borough', y='Animal Class', data=sorted_species_class_count,palette='colorblind')
+​
+for i, v in enumerate(sorted_species_class_count['Animal Class']):
+    plt.annotate(str(v), xy=(i, v), ha='center', va='bottom', fontsize=12)
+    
+plt.title('Animal Class by Borough',fontsize=18, fontweight='bold')
+plt.xlabel('Borough',fontsize=14)
+plt.ylabel('Count of Animal Class',fontsize=14)
+Text(0, 0.5, 'Count of Animal Class')
+
+​
+What are the Animal Classes in each borough?
+image = Image.open("americanrobin.jpg")
+image
+
+image = Image.open("muteswan-geese.jpg")
+image
+
+bronx_df = animals_df[animals_df['Borough'] == 'Bronx']
+animal_counts = bronx_df['Animal Class'].value_counts()
+fig, a = plt.subplots(figsize=(16,12))
+​
+plt.barh(animal_counts.index, animal_counts.values, color='plum')
+​
+for i, v in enumerate(animal_counts.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+​
+plt.title('Animal Classes in the Bronx',fontsize=18,fontweight='bold')
+plt.xlabel('Count of Animal Class',fontsize=14)
+plt.ylabel('Animal Class',fontsize=14)
+plt.show()
+
+image = Image.open("herringgulls.jpg")
+image
+
+image = Image.open("seal.jpg")
+image
+
+image = Image.open("seaturtle.jpg")
+image
+
+image = Image.open("puma.jpg")
+image
+
+manhattan_df = animals_df[animals_df['Borough'] == 'Staten Island']
+city_animal_counts = manhattan_df['Animal Class'].value_counts()
+​
+fig, a = plt.subplots(figsize=(16,12))
+​
+plt.barh(city_animal_counts.index, city_animal_counts.values,color="orange")
+​
+for i, v in enumerate(city_animal_counts.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+    
+plt.title('Animal Classes in Staten Island',fontsize=18,fontweight='bold')
+plt.xlabel('Count of Animal Class',fontsize=14)
+plt.ylabel('Animal Class',fontsize=14)
+plt.show()
+
+image = Image.open("geese2.jpg")
+image
+
+image = Image.open("raccoons.jpg")
+image
+
+image = Image.open("skunk.jpg")
+image
+
+image = Image.open("Common-Grackle.jpg")
+image
+
+image = Image.open("easternredbat.jpg")
+image
+
+manhattan_df = animals_df[animals_df['Borough'] == 'Queens']
+city_animal_counts = manhattan_df['Animal Class'].value_counts()
+​
+fig, a = plt.subplots(figsize=(16,12))
+​
+plt.barh(city_animal_counts.index, city_animal_counts.values,color='green')
+​
+for i, v in enumerate(city_animal_counts.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+    
+plt.title('Animal Classes in Queens',fontsize=18,fontweight='bold')
+plt.xlabel('Count of Animal Class',fontsize=14)
+plt.ylabel('Animal Class',fontsize=14)
+plt.show()
+
+​
+manhattan_df = animals_df[animals_df['Borough'] == 'Brooklyn']
+city_animal_counts = manhattan_df['Animal Class'].value_counts()
+​
+fig, ax = plt.subplots(figsize=(16,12))
+​
+plt.barh(city_animal_counts.index, city_animal_counts.values,color='goldenrod')
+​
+for i, v in enumerate(city_animal_counts.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+    
+plt.title('Animal Classes in Brooklyn',fontsize=18,fontweight='bold')
+plt.xlabel('Count of Animal Class',fontsize=14)
+plt.ylabel('Animal Class',fontsize=14)
+plt.show()
+
+image = Image.open("Screenshot 2023-03-23 222005.jpg")
+image
+
+​
+​
+manhattan_df = animals_df[animals_df['Borough'] == 'Manhattan']
+city_animal_counts = manhattan_df['Animal Class'].value_counts()
+​
+fig, ax = plt.subplots(figsize=(16,12))
+​
+plt.barh(city_animal_counts.index, city_animal_counts.values,color='blue')
+​
+for i, v in enumerate(city_animal_counts.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+    
+plt.title('Animal Classes in Manhattan',fontsize=18,fontweight='bold')
+plt.xlabel('Count of Animal Class',fontsize=14)
+plt.ylabel('Animal Class',fontsize=14)
+plt.show()
+
+​
+How does Park Ranger Response vary from one month to another across all 5 boroughs?
+animals_df["Date and time of Ranger response"] = pd.to_datetime(animals_df["Date and time of Ranger response"])
+animals_df["Month"] = animals_df["Date and time of Ranger response"].dt.month_name()
+animals_df["Year"] = animals_df["Date and time of Ranger response"].dt.year
+count = animals_df.pivot_table(index=["Year","Month"], values=["Date and time of Ranger response"],aggfunc='count')
+count.index = pd.to_datetime(count.index.map(lambda x: f"{x[0]} {x[1]}"))
+fig, ax = plt.subplots(figsize=(20,12))
+​
+count.plot.line(ax=ax, stacked=True)
+​
+plt.title('Monthly Park Ranger Response for all Animal Classes',fontsize=18,fontweight='bold')
+plt.xlabel('Date of Park Ranger Response', fontsize=14)
+plt.ylabel('Park Ranger Response', fontsize=14)
+​
+for x, y in zip(count.index, count.values):
+    ax.text(x, y, str(y[0]), ha='center', va='bottom')
+​
+plt.show()
+
+​
+​
+How did the final actions of the Park Ranger affect the animals?
+ranger_action = animals_df['Final Ranger Action'].value_counts()
+​
+plt.figure(figsize=(18, 12))
+plt.bar(ranger_action.index, ranger_action.values)
+​
+for i, v in enumerate(ranger_action.values):
+    plt.text(i, v, str(v), color='black', ha='center', va='bottom', fontsize=12)
+    
+plt.xlabel('Response Outcome',fontsize=14)
+plt.ylabel("Count of Park Ranger's Response",fontsize=14)
+plt.title("Final Outcome of Park Ranger's Response",fontsize=18,fontweight='bold')
+Text(0.5, 1.0, "Final Outcome of Park Ranger's Response")
+
+​
+Which Animal Classes are the rarest across all 5 boroughs?
+grouped = animals_df.groupby(['Animal Class']).size()
+mean = grouped.mean()
+​
+rare_animals = grouped[(grouped < mean) & (grouped < 30)]
+rare_animals_sorted = rare_animals.sort_values(ascending=False)
+image = Image.open("Eastern-Coyote-on-Road.jpg")
+image
+
+fig, ax = plt.subplots(figsize=(16,12))
+​
+rare_animals_sorted.plot(kind='barh',color='goldenrod')
+​
+plt.title("New York City's Rarest Animal Classes",fontsize=18,fontweight='bold')
+​
+for i, v in enumerate(rare_animals_sorted.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+    
+plt.xlabel('Count of Animal Class',fontsize=14)
+plt.ylabel('Animal Class',fontsize=14)
+plt.show()
+
+​
+DATAFRAME > RARE ANIMALS
+rare_animals_df = animals_df.loc[animals_df['Animal Class'].isin(rare_animals_sorted.index)]
+rare_animals_df.head(5)
+Date and time of Ranger response	Borough	Property	Species Description	Species Status	Animal Condition	Age	Animal Class	Final Ranger Action	# of Animals	Month	Year
+39	2021-06-13 14:05:00	Staten Island	Clove Lakes Park	Catfish	Native	DOA	Adult;#Juvenile	Fish-Numerous Quantity	Advised/Educated others	12.0	June	2021
+112	2021-05-26 12:03:00	Bronx	Van Cortlandt Park	Red-Eared Slider	Invasive	Healthy	Adult	Marine Reptiles (Sea Turtles)	Relocated/Condition Corrected	1.0	May	2021
+230	2021-04-23 14:30:00	Manhattan	Central Park	Eastern Coyote	Native	Healthy	Adult	Coyotes	Unfounded	0.0	April	2021
+236	2021-04-22 12:00:00	Queens	Bayswater Park	Atlantic Menhaden	Native	DOA	Adult	Fish-Numerous Quantity	Advised/Educated others	75.0	April	2021
+259	2021-04-14 11:45:00	Staten Island	Wolfe's Pond Park	Bottlenose Dolphin	Native	DOA	Adult	Marine Mammals (Whales, Dolphins, Seals)	Relocated/Condition Corrected	1.0	April	2021
+​
+Which Animals are the rarest across all 5 boroughs?
+counts = rare_animals_df['Species Description'].value_counts()
+counts
+Eastern Coyote           18
+Seal (Unknown)           11
+Harbor Seal               6
+Harp Seal                 3
+Gray Seal                 2
+Atlantic Menhaden         2
+Fish (Unknown)            2
+Dolphin (Unknown)         2
+Sea Turtle                2
+Minke Whale               1
+Koi                       1
+Catfish                   1
+Red-Eared Slider          1
+Puma                      1
+Loggerhead Sea Turtle     1
+Spiny Dogfish Shark       1
+Bottlenose Dolphin        1
+Harbor Porpoise           1
+Name: Species Description, dtype: int64
+fig, ax = plt.subplots(figsize=(16,12))
+​
+counts.plot(kind='barh',color='goldenrod')
+​
+plt.title("New York City's Rarest Animals",fontsize=18,fontweight='bold')
+​
+for i, v in enumerate(counts.values):
+    plt.text(v, i, str(v), color='black', va='center', fontsize=12)
+    
+plt.xlabel('Count of Animal',fontsize=14)
+plt.ylabel('Animal',fontsize=14)
+​
+plt.locator_params(axis="x", integer=True, tight=True)
+​
+plt.show()
+
+image = Image.open("harborporpoise.jpg")
+image
+
+image = Image.open("spinydogfish.jpg")
+image
+
+image = Image.open("minke-whale-2.jpg")
+image
+
+​
+How does the Park Ranger Response for Rare Animals vary from one month to another across all 5 boroughs?
+rare_animals_df["Date and time of Ranger response"] = pd.to_datetime(animals_df["Date and time of Ranger response"])
+rare_animals_df["Month"] = rare_animals_df["Date and time of Ranger response"].dt.month_name()
+rare_animals_df["Year"] = rare_animals_df["Date and time of Ranger response"].dt.year
+rare_animals_count = rare_animals_df.pivot_table(index=["Year","Month"], values=["Date and time of Ranger response"],aggfunc='count')
+C:\Users\aguer\AppData\Local\Temp\ipykernel_15548\261027443.py:1: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  rare_animals_df["Date and time of Ranger response"] = pd.to_datetime(animals_df["Date and time of Ranger response"])
+C:\Users\aguer\AppData\Local\Temp\ipykernel_15548\261027443.py:2: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  rare_animals_df["Month"] = rare_animals_df["Date and time of Ranger response"].dt.month_name()
+C:\Users\aguer\AppData\Local\Temp\ipykernel_15548\261027443.py:3: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  rare_animals_df["Year"] = rare_animals_df["Date and time of Ranger response"].dt.year
+rare_animals_count.index = pd.to_datetime(rare_animals_count.index.map(lambda x: f"{x[0]} {x[1]}"))
+fig, ax = plt.subplots(figsize=(20,12))
+​
+rare_animals_count.plot.line(ax=ax,stacked=True)
+    
+plt.title('Monthly Park Ranger Response for Rare Animals',fontsize=18,fontweight='bold')
+plt.xlabel('Date of Park Ranger Response', fontsize=14)
+plt.ylabel('Park Ranger Response', fontsize=14)
+​
+for x, y in zip(rare_animals_count.index, rare_animals_count.values):
+    ax.text(x, y, str(y[0]), ha='center', va='bottom')
+​
+plt.show()
+
+How did the final actions of the Park Ranger affect Rare Animals?
+rare_animals_ranger_action_counts = rare_animals_df['Final Ranger Action'].value_counts()
+​
+plt.figure(figsize=(18, 12))
+​
+plt.bar(rare_animals_ranger_action_counts.index, rare_animals_ranger_action_counts.values)
+​
+for i, v in enumerate(rare_animals_ranger_action_counts.values):
+    plt.text(i, v, str(v), color='black', ha='center', va='bottom', fontsize=12)
+​
+plt.xlabel('Response Outcome',fontsize=14)
+plt.ylabel("Count of Park Ranger's Response",fontsize=14)
+plt.title("Final Outcome of Park Ranger's Response to Rare Animals",fontsize=18,fontweight='bold')
+Text(0.5, 1.0, "Final Outcome of Park Ranger's Response to Rare Animals")
+
+What is the Health Condition of Rare Animals across all 5 boroughs?
+rare_animal_condition_borough= rare_animals_df.groupby(['Animal Condition', 'Borough'])['Animal Class'].count().reset_index()
+rare_animal_condition_borough
+Animal Condition	Borough	Animal Class
+0	DOA	Bronx	5
+1	DOA	Manhattan	1
+2	DOA	Queens	4
+3	DOA	Staten Island	9
+4	Healthy	Bronx	8
+5	Healthy	Brooklyn	1
+6	Healthy	Manhattan	4
+7	Healthy	Queens	7
+8	Healthy	Staten Island	4
+9	Injured	Queens	2
+10	Not Reported	Bronx	3
+11	Not Reported	Brooklyn	1
+12	Not Reported	Manhattan	6
+13	Not Reported	Staten Island	2
+rare_animal_condition_borough_pivot = pd.pivot_table(rare_animal_condition_borough, values='Animal Class', index='Animal Condition', columns='Borough')
+rare_animal_condition_borough_pivot
+Borough	Bronx	Brooklyn	Manhattan	Queens	Staten Island
+Animal Condition					
+DOA	5.0	NaN	1.0	4.0	9.0
+Healthy	8.0	1.0	4.0	7.0	4.0
+Injured	NaN	NaN	NaN	2.0	NaN
+Not Reported	3.0	1.0	6.0	NaN	2.0
+##Replace NaN values with a 0
+
+rare_animal_condition_borough_pivot = rare_animal_condition_borough_pivot.fillna(0)
+colors = sns.color_palette("Greens", n_colors=20, desat=0.5)
+​
+​
+fig, ax = plt.subplots(figsize=(14, 8))
+sns.heatmap(rare_animal_condition_borough_pivot, cmap=colors, ax=ax)
+​
+plt.suptitle("Health Condition of New York City's Rarest Animals", fontsize=18, fontweight='bold')
+plt.xlabel('Borough', fontsize=14)
+plt.ylabel('Animal Health Condition', fontsize=14)
+​
+plt.show()
+
+​
+
+
+~ THE END ~
